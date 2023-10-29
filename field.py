@@ -2,34 +2,34 @@ from enum import Enum
 
 
 class Tetromino(Enum):
-    I = {"shape": [[[1, 1, 1, 1]], [[1], [1], [1], [1]]], "color": "cyan", "offset": [-10, 10]}
-    O = {"shape": [[[1, 1], [1, 1]]], "color": "yellow", "offset": [0, 0]}
+    I = {"shape": [[[1, 1, 1, 1]], [[1], [1], [1], [1]]], "color": "cyan", "offset": [-10, 10], "left_move": []}
+    O = {"shape": [[[1, 1], [1, 1]]], "color": "yellow", "offset": [10, 0], "left_move": []}
     T = {"shape": [
         [[0, 1, 0], [1, 1, 1]],
         [[1, 0], [1, 1], [1, 0]],
         [[1, 1, 1], [0, 1, 0]],
         [[0, 1], [1, 1], [0, 1]]
-    ], "color": "purple", "offset": [0, 0]}
+    ], "color": "purple", "offset": [0, 0], "left_move": [3]}
     S = {"shape": [
         [[0, 1, 1], [1, 1, 0]],
         [[1, 0], [1, 1], [0, 1]]
-    ], "color": "green", "offset": [0, 0]}
+    ], "color": "green", "offset": [0, 0], "left_move": []}
     Z = {"shape": [
         [[1, 1, 0], [0, 1, 1]],
         [[0, 1], [1, 1], [1, 0]]
-    ], "color": "red", "offset": [0, 0]}
+    ], "color": "red", "offset": [0, 0], "left_move": []}
     J = {"shape": [
         [[1, 0, 0], [1, 1, 1]],
         [[1, 1], [1, 0], [1, 0]],
         [[1, 1, 1], [0, 0, 1]],
         [[0, 1], [0, 1], [1, 1]]
-    ], "color": "blue", "offset": [0, 0]}
+    ], "color": "blue", "offset": [0, 0], "left_move": []}
     L = {"shape": [
         [[0, 0, 1], [1, 1, 1]],
         [[1, 0], [1, 0], [1, 1]],
         [[1, 1, 1], [1, 0, 0]],
         [[1, 1], [0, 1], [0, 1]]
-    ], "color": "orange", "offset": [0, 0]}
+    ], "color": "orange", "offset": [0, 0], "left_move": []}
 
 
 class Field:

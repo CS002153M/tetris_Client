@@ -22,6 +22,7 @@ class TetrisApp:
         self.next_tetromino = self.random_tetromino()
         self.next_piece_canvas = self.canvas.create_rectangle(500, 20, 580, 100, outline="white")
         self.draw_next_piece()
+        self.left_moved = False
 
         self.current_tetromino = self.random_tetromino()
         self.current_row = 0
@@ -141,6 +142,8 @@ class TetrisApp:
             self.next_tetromino = self.random_tetromino()
             self.draw_next_piece()
 
+            self.left_moved = False
+
         if not self.field.check_collision(self.current_tetromino, self.current_rotation, self.current_row + 1, self.current_col):
             self.current_row += 1
         else:
@@ -173,7 +176,14 @@ class TetrisApp:
             if len(self.current_tetromino.value["shape"]) < new_rotation:
                 new_rotation -= len(self.current_tetromino.value["shape"])
             self.current_rotation = new_rotation
-            if (new_rotation % 2 == 0):
+            if Tetromino(self.current_tetromino).value["left_move"].__contains__(new_rotation) and not self.left_moved:
+                self.current_col -= 1
+                self.left_moved = True
+            elif self.left_moved:
+                self.current_col += 1
+                self.left_moved = False
+
+            if new_rotation % 2 == 0:
                 self.current_col -= 1
             else:
                 self.current_col += 1
