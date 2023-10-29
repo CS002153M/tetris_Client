@@ -23,13 +23,13 @@ class Tetromino(Enum):
         [[1, 1], [1, 0], [1, 0]],
         [[1, 1, 1], [0, 0, 1]],
         [[0, 1], [0, 1], [1, 1]]
-    ], "color": "blue", "offset": [0, 0], "left_move": []}
+    ], "color": "blue", "offset": [0, 0], "left_move": [3]}
     L = {"shape": [
         [[0, 0, 1], [1, 1, 1]],
         [[1, 0], [1, 0], [1, 1]],
         [[1, 1, 1], [1, 0, 0]],
         [[1, 1], [0, 1], [0, 1]]
-    ], "color": "orange", "offset": [0, 0], "left_move": []}
+    ], "color": "orange", "offset": [0, 0], "left_move": [3]}
 
 
 class Field:

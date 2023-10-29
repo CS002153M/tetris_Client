@@ -1,13 +1,19 @@
 import time
-from random import choice, random
+import tkinter as tk
+from random import random
+import random
 
 from field import Field, Tetromino
-import tkinter as tk
-from tkinter import ttk
 
 
 class TetrisApp:
     def __init__(self, master):
+        self.active = True
+
+        self.bag = list(Tetromino)  # Create a bag containing all seven tetrominoes
+        random.shuffle(self.bag)  # Shuffle the bag
+        self.shuffled_bag = []  # Create an empty list to hold the shuffled tetrominoes
+
         self.master = master
         self.master.title("Tetris")
         self.master.geometry("650x800")
@@ -15,13 +21,16 @@ class TetrisApp:
         self.canvas = tk.Canvas(self.master, bg="black", width=600, height=900)
         self.canvas.pack()
 
+        self.bag = list(Tetromino)  # Create a bag containing all seven tetrominoes
+        random.shuffle(self.bag)  # Shuffle the bag
+        self.shuffled_bag = []  # Create an empty list to hold the shuffled tetrominoes
+
         self.field = Field()
 
         self.cell_size = 40  # pixels
         self.canvas_grid = [[None for _ in range(self.field.cols)] for _ in range(self.field.rows)]
         self.next_tetromino = self.random_tetromino()
         self.next_piece_canvas = self.canvas.create_rectangle(500, 20, 580, 100, outline="white")
-        self.draw_next_piece()
         self.left_moved = False
 
         self.current_tetromino = self.random_tetromino()
@@ -46,9 +55,6 @@ class TetrisApp:
 
         self.draw_lines()
 
-        self.update_grid()
-        self.master.after(self.drop_time, self.game_loop)
-
         self.master.bind('w', self.rotate)
         self.master.bind('<Up>', self.rotate)
         self.master.bind('a', self.move_left)
@@ -66,7 +72,7 @@ class TetrisApp:
         self.master.bind('<space>', self.hard_drop)
         self.master.focus_set()
         # ttk.Button(self.master, text="Update", command=self.update_tetromino).grid(row=self.field.rows,
-                                                                                   #columnspan=self.field.cols)
+                                                                                    #columnspan=self.field.cols)
 
     def draw_next_piece(self):
         # First, clear the old next piece from the canvas
@@ -103,7 +109,13 @@ class TetrisApp:
                 self.canvas.create_line(x, y - plus_size, x, y + plus_size, fill="#2d2e2d", width=0.7)
 
     def random_tetromino(self):
-        return choice(list(Tetromino))
+        # If the bag is empty, refill it and shuffle
+        if not self.shuffled_bag:
+            self.shuffled_bag = self.bag.copy()
+            random.shuffle(self.shuffled_bag)
+
+        # Draw a random tetromino from the shuffled bag
+        return self.shuffled_bag.pop()
 
     def update_grid(self):
         for i in range(self.field.rows):
@@ -135,8 +147,24 @@ class TetrisApp:
                 if cell:
                     self.canvas.itemconfig(self.canvas_grid[self.current_row + dx][self.current_col + dy], fill=self.current_tetromino.value["color"])
 
+    def deactivate(self):
+        self.active = False
+        self.current_tetromino = None
+        self.next_tetromino = None
+        self.update_grid()
+
+    def activate(self):
+        self.active = True
+        self.update_grid()
+        self.draw_next_piece()
+
+        self.master.after(self.drop_time, self.game_loop)
+
+
 
     def game_loop(self):
+        if not self.active:
+            return
         if self.current_row == 0:
             self.current_tetromino = self.next_tetromino
             self.next_tetromino = self.random_tetromino()
@@ -231,4 +259,5 @@ class TetrisApp:
 if __name__ == '__main__':
     root = tk.Tk()
     app = TetrisApp(root)
+    app.activate()
     root.mainloop()
