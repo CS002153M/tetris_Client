@@ -34,7 +34,7 @@ class Tetromino(Enum):
 
 class Field:
     def __init__(self):
-        self.rows = 20
+        self.rows = 17
         self.cols = 10
         self.board = [[0 for _ in range(self.cols)] for _ in range(self.rows)]
         self.is_active = True
@@ -47,17 +47,20 @@ class Field:
         self.is_active = True
 
     def clear_lines(self):
-        rows_to_clear = []
-        for i, row in enumerate(self.board):
-            if all(cell != 0 for cell in row):
-                rows_to_clear.append(i)
+        rows_to_clear = [i for i, row in enumerate(self.board) if all(cell != 0 for cell in row)]
 
-        # Remove the filled lines and add new empty lines at the top
-        for i in reversed(rows_to_clear):  # Reverse so we delete from the bottom up
+        # Count the number of filled lines
+        num_cleared_lines = len(rows_to_clear)
+
+        # Remove the filled lines
+        for i in sorted(rows_to_clear, reverse=True):
             del self.board[i]
+
+        # Add new empty lines at the top
+        for _ in range(num_cleared_lines):
             self.board.insert(0, [0 for _ in range(self.cols)])
 
-        return len(rows_to_clear)  # Return the number of cleared lines, in case you want to use it
+        return num_cleared_lines  # Return the number of cleared lines
 
     def place_tetromino(self, tetromino, rotation_index, place_col):
         shape = tetromino.value["shape"][rotation_index]

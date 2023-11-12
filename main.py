@@ -1,263 +1,240 @@
 import time
 import tkinter as tk
-from random import random
-import random
+from tkinter import simpledialog, messagebox
 
-from field import Field, Tetromino
+import pygame
+import requests
+from PIL import ImageTk, ImageEnhance, Image
+
+from tetris import TetrisApp
+
+api = "http://localhost:6969"
+token = "f2d955f0-7464-46fc-9390-f5138b263273"
+
+# Dialog for sign up and login
+class UserDialog(simpledialog.Dialog):
+    def body(self, master):
+        tk.Label(master, text="Username:").grid(row=0)
+        tk.Label(master, text="Password:").grid(row=1)
+
+        self.username = tk.Entry(master)
+        self.password = tk.Entry(master, show="*")
+
+        self.username.grid(row=0, column=1)
+        self.password.grid(row=1, column=1)
+
+        return self.username  # initial focus
+
+    def apply(self):
+        username = self.username.get()
+        password = self.password.get()
+        self.result = {"username": username, "password": password}
 
 
-class TetrisApp:
+class TetrisMenu:
     def __init__(self, master):
-        self.active = True
-
-        self.bag = list(Tetromino)  # Create a bag containing all seven tetrominoes
-        random.shuffle(self.bag)  # Shuffle the bag
-        self.shuffled_bag = []  # Create an empty list to hold the shuffled tetrominoes
-
+        # Remove the title bar
         self.master = master
-        self.master.title("Tetris")
-        self.master.geometry("650x800")
+        master.overrideredirect(True)
 
-        self.canvas = tk.Canvas(self.master, bg="black", width=600, height=900)
-        self.canvas.pack()
+        # Initialize pygame mixer
+        pygame.init()
+        pygame.mixer.init()
 
-        self.bag = list(Tetromino)  # Create a bag containing all seven tetrominoes
-        random.shuffle(self.bag)  # Shuffle the bag
-        self.shuffled_bag = []  # Create an empty list to hold the shuffled tetrominoes
+        # Load and play background music
+        pygame.mixer.music.load("assets/background_music.wav")  # Change to your actual file path
+        pygame.mixer.music.play(loops=-1)  # This will start the music and loop indefinitely
 
-        self.field = Field()
+        master.geometry("1600x900")
+        master.resizable(False, False)
 
-        self.cell_size = 40  # pixels
-        self.canvas_grid = [[None for _ in range(self.field.cols)] for _ in range(self.field.rows)]
-        self.next_tetromino = self.random_tetromino()
-        self.next_piece_canvas = self.canvas.create_rectangle(500, 20, 580, 100, outline="white")
-        self.left_moved = False
+        # Load images from the assets folder
+        self.bg_image = tk.PhotoImage(file="assets/background.png")
+        self.title_image = tk.PhotoImage(file="assets/title.png")
+        self.start_button_image = tk.PhotoImage(file="assets/start_button.png")
+        self.options_button_image = tk.PhotoImage(file="assets/options_button.png")
+        self.exit_button_image = tk.PhotoImage(file="assets/exit_button.png")
 
-        self.current_tetromino = self.random_tetromino()
-        self.current_row = 0
-        self.current_col = (self.field.cols // 2) - 2
-        self.current_rotation = 0
-        self.drop_time = 300
+        # Load hover sound
+        self.hover_sound = pygame.mixer.Sound("assets/button_hover.mp3")
+        # Load start sound
+        self.start_sound = pygame.mixer.Sound("assets/start_game.mp3")
 
-        self.das_time = 133  # Delayed Auto-Shift time in milliseconds
-        self.arr_time = 10  # Auto-Repeat Rate time in milliseconds
-        self.last_keypress_time = 0  # Time of last directional key press
-        self.key_held_down = None  # None, 'Left', or 'Right'
+        # Background canvas
+        self.canvas = tk.Canvas(master, width=1600, height=900, bd=0, highlightthickness=0, relief='flat')
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.create_image(0, 0, image=self.bg_image, anchor="nw")
 
-        for i in range(self.field.rows):
-            for j in range(self.field.cols):
-                x1 = j * self.cell_size
-                y1 = i * self.cell_size
-                x2 = x1 + self.cell_size
-                y2 = y1 + self.cell_size
-                self.canvas_grid[i][j] = self.canvas.create_rectangle(x1, y1, x2, y2, fill="black", outline="black",
-                                                                      width=0)
+        self.canvas.images = []
 
-        self.draw_lines()
+        # Center the title image and move it down a bit (e.g., 150 pixels from the top)
+        self.canvas.create_image(800, 150, image=self.title_image, anchor="center")
 
-        self.master.bind('w', self.rotate)
-        self.master.bind('<Up>', self.rotate)
-        self.master.bind('a', self.move_left)
-        self.master.bind('<Left>', self.move_left)
-        self.master.bind('s', self.move_down)
-        self.master.bind('<Down>', self.move_down)
-        self.master.bind('d', self.move_right)
-        self.master.bind('<Right>', self.move_right)
+        # Make the window moveable
+        self.canvas.bind("<Button-1>", self.click_window)
+        self.canvas.bind("<B1-Motion>", self.drag_window)
 
-        self.master.bind('<KeyRelease-a>', self.reset_key_held_down)
-        self.master.bind('<KeyRelease-Left>', self.reset_key_held_down)
-        self.master.bind('<KeyRelease-d>', self.reset_key_held_down)
-        self.master.bind('<KeyRelease-Right>', self.reset_key_held_down)
+        # Initial position
+        self._drag_data = {"x": 0, "y": 0}
 
-        self.master.bind('<space>', self.hard_drop)
-        self.master.focus_set()
-        # ttk.Button(self.master, text="Update", command=self.update_tetromino).grid(row=self.field.rows,
-                                                                                    #columnspan=self.field.cols)
+        # Buttons
+        button_y_start_position = 350  # Starting Y position of the first button
+        self.create_button(master, "Start", "assets/start_button.png", button_y_start_position)
+        self.create_button(master, "Options", "assets/options_button.png", button_y_start_position + self.start_button_image.height() / 1.2)
+        self.create_button(master, "Exit", "assets/exit_button.png", button_y_start_position + 2 * self.start_button_image.height() / 1.2)
 
-    def draw_next_piece(self):
-        # First, clear the old next piece from the canvas
-        self.canvas.delete("next_piece")
+    def create_button(self, master, text, image_path, y_position):
+        # Use the ImageTk.PhotoImage to load the image directly
+        tk_image = ImageTk.PhotoImage(file=image_path)
 
-        shape = Tetromino(self.next_tetromino).value["shape"][0]
-        offset = Tetromino(self.next_tetromino).value["offset"]
-        for dx, row in enumerate(shape):
-            for dy, cell in enumerate(row):
-                if cell:
-                    x1 = offset[0] + 510 + dy * self.cell_size / 2
-                    y1 = offset[1] + 40 + dx * self.cell_size / 2
-                    x2 = x1 + self.cell_size / 2
-                    y2 = y1 + self.cell_size / 2
-                    self.canvas.create_rectangle(x1, y1, x2, y2, fill=self.next_tetromino.value["color"],
-                                                 tags="next_piece")
+        # Create a canvas window to hold the button
+        button_canvas = self.canvas.create_image(800, y_position, image=tk_image)
 
-    def draw_lines(self):
-        # Now draw plusses at intersections
-        for i in range(self.field.rows + 1):
-            for j in range(self.field.cols + 1):
-                x = j * self.cell_size
-                y = i * self.cell_size
-                plus_size = 7  # The size of each arm of the plus
+        # Bind mouse events to the canvas window
+        self.canvas.tag_bind(button_canvas, "<Enter>", lambda e: self.on_hover(button_canvas, image_path, True, tk_image))
+        self.canvas.tag_bind(button_canvas, "<Leave>", lambda e: self.on_hover(button_canvas, image_path, False, tk_image))
+        self.canvas.tag_bind(button_canvas, "<Button-1>", lambda e: self.clicked(text))
 
-                # Draw the vertical and horizontal lines (bars) connecting the plusses
-                if i < self.field.rows:
-                    self.canvas.create_line(x, y, x, y + self.cell_size, fill="#1f1f1f", width=0.2)
-                if j < self.field.cols:
-                    self.canvas.create_line(x, y, x + self.cell_size, y, fill="#1f1f1f", width=0.2)
+        # Store a reference to the image to prevent garbage collection
+        self.store_image(tk_image)
 
-                # Draw the plus at each intersection point
-                self.canvas.create_line(x - plus_size, y, x + plus_size, y, fill="#2d2e2d", width=0.7)
-                self.canvas.create_line(x, y - plus_size, x, y + plus_size, fill="#2d2e2d", width=0.7)
+    def fade_to_black(self, duration=3000):
+        # Create an overlay Toplevel window
+        self.start_sound.play()
+        self.overlay = tk.Toplevel(self.master)
+        self.overlay.geometry("1600x900")  # Match the main window size
+        self.overlay.overrideredirect(True)  # Remove window decorations
+        self.overlay.attributes("-alpha", 0)  # Start completely transparent
+        self.overlay.lift()  # Raise above the main window
+        self.overlay.geometry(
+            "+{}+{}".format(self.master.winfo_x(), self.master.winfo_y()))  # Position over the main window
 
-    def random_tetromino(self):
-        # If the bag is empty, refill it and shuffle
-        if not self.shuffled_bag:
-            self.shuffled_bag = self.bag.copy()
-            random.shuffle(self.shuffled_bag)
+        # Fill the overlay with a black background
+        self.overlay.configure(bg='black')
 
-        # Draw a random tetromino from the shuffled bag
-        return self.shuffled_bag.pop()
+        self.fade_in_step(0, duration)
 
-    def update_grid(self):
-        for i in range(self.field.rows):
-            for j in range(self.field.cols):
-                color = "black"
-                if self.field.board[i][j] != 0:
-                    tetromino_type = self.field.board[i][j]
-                    color = Tetromino(tetromino_type).value["color"]
+    def fade_in_step(self, alpha, duration):
+        steps = 100
+        delta_alpha = 1.0 / steps
+        interval = duration // steps
 
-                self.canvas.itemconfig(self.canvas_grid[i][j], fill=color)
-
-        shape = Tetromino(self.current_tetromino).value["shape"][self.current_rotation]
-
-        # Calculate the ghost (or shadow) tetromino
-        ghost_row = self.current_row
-        while not self.field.check_collision(self.current_tetromino, self.current_rotation, ghost_row + 1,
-                                             self.current_col):
-            ghost_row += 1
-
-        # Overlay the ghost tetromino
-        for dx, row in enumerate(shape):
-            for dy, cell in enumerate(row):
-                if cell:
-                    self.canvas.itemconfig(self.canvas_grid[ghost_row + dx][self.current_col + dy], fill="gray")
-
-        # Overlay the current tetromino
-        for dx, row in enumerate(shape):
-            for dy, cell in enumerate(row):
-                if cell:
-                    self.canvas.itemconfig(self.canvas_grid[self.current_row + dx][self.current_col + dy], fill=self.current_tetromino.value["color"])
-
-    def deactivate(self):
-        self.active = False
-        self.current_tetromino = None
-        self.next_tetromino = None
-        self.update_grid()
-
-    def activate(self):
-        self.active = True
-        self.update_grid()
-        self.draw_next_piece()
-
-        self.master.after(self.drop_time, self.game_loop)
-
-
-
-    def game_loop(self):
-        if not self.active:
-            return
-        if self.current_row == 0:
-            self.current_tetromino = self.next_tetromino
-            self.next_tetromino = self.random_tetromino()
-            self.draw_next_piece()
-
-            self.left_moved = False
-
-        if not self.field.check_collision(self.current_tetromino, self.current_rotation, self.current_row + 1, self.current_col):
-            self.current_row += 1
+        if alpha < 1.0:
+            alpha += delta_alpha
+            self.overlay.attributes("-alpha", alpha)  # Gradually increase the opacity
+            self.master.after(interval, lambda: self.fade_in_step(alpha, duration))
         else:
-            if self.current_row == 0:
-                self.field = Field()
-            self.field.place_tetromino(self.current_tetromino, self.current_rotation, self.current_col)
-            self.current_tetromino = self.next_tetromino
-            self.current_row = 0
-            self.current_col = (self.field.cols // 2) - 2
-            self.current_rotation = 0
-            self.key_held_down = None
+            pygame.mixer.music.stop()
+            time.sleep(1)
+            self.master.grab_release()
+            TetrisApp(self.master, self.overlay, token)
 
-        if self.key_held_down:
-            current_time = time.time() * 1000  # Current time in milliseconds
-            elapsed_time = current_time - self.last_keypress_time
+    def clicked(self, button):
+        match (button):
+            case "Start":
+                print(token)
+                if token == "":
+                    messagebox.showerror("Log In", "You must be logged in to play!")
+                    return
 
-            if elapsed_time > self.das_time:
-                if (current_time - self.last_keypress_time) % self.arr_time < self.arr_time / 2:
-                    if self.key_held_down == 'Left':
-                        self.move_left()
-                    elif self.key_held_down == 'Right':
-                        self.move_right()
+                self.fade_to_black()
+            case "Exit":
+                quit()
+            case "Options":
+                self.show_login_signup_dialog()
+                pass
 
-        self.update_grid()
-        self.master.after(self.drop_time, self.game_loop)
+    def on_hover(self, button_canvas, image_path, hover, tk_image):
+        # The hover effect now needs to apply a tint to the tk_image directly
+        if hover:
+            self.hover_sound.play()
+            # Apply a green tint effect to the tk_image
+            self.apply_green_tint(image_path, button_canvas, True, tk_image)
+        else:
+            # Revert the button image to the original
+            self.apply_green_tint(image_path, button_canvas, False, tk_image)
 
-    def rotate(self, event=None):
-        new_rotation = (self.current_rotation + 1) % len(Tetromino(self.current_tetromino).value["shape"])
-        if not self.field.check_collision(self.current_tetromino, new_rotation, self.current_row, self.current_col):
-            if len(self.current_tetromino.value["shape"]) < new_rotation:
-                new_rotation -= len(self.current_tetromino.value["shape"])
-            self.current_rotation = new_rotation
-            if Tetromino(self.current_tetromino).value["left_move"].__contains__(new_rotation) and not self.left_moved:
-                self.current_col -= 1
-                self.left_moved = True
-            elif self.left_moved:
-                self.current_col += 1
-                self.left_moved = False
+    # method for showing the sign-up/login dialog
+    def show_login_signup_dialog(self):
+        global token
+        # Ask the user if they want to sign up or log in
+        response = messagebox.askyesno("Sign Up/Login", "Would you like to sign up? (Press NO to log in)")
+        if response:
+            # Sign up process
+            dialog = UserDialog(self.canvas.master, title="Sign Up")
+            if dialog.result:
+                signup_data = dialog.result
+                headers = {
+                    'identifier': signup_data.get("username"),
+                    'password': signup_data.get("password"),
+                }
+                response = requests.get(api + "/register", headers=headers).json()
+                if str(response["status"]) == "['success']":
+                    messagebox.showinfo("Sign Up", "You have successfully signed up, you may now log in!")
+                else:
+                    messagebox.showinfo("Sign Up", "There is already somebody with your username signed up!")
+        else:
+            # Login process
+            dialog = UserDialog(self.canvas.master, title="Log In")
+            if dialog.result:
+                login_data = dialog.result
+                headers = {
+                    'identifier': login_data.get("username"),
+                    'password': login_data.get("password"),
+                }
+                response = requests.get(api + "/receive-auth", headers=headers).json()
+                if str(response["status"]) == "['error']":
+                    messagebox.showinfo("Log In", "Could not authenticate with your provided credentials!")
+                else:
+                    messagebox.showinfo("Log In", "You have successfully logged in and can play!")
+                    token = str(response["status"]).removeprefix("['").removesuffix("']")
 
-            if new_rotation % 2 == 0:
-                self.current_col -= 1
-            else:
-                self.current_col += 1
-            self.update_grid()
+    def apply_green_tint(self, image_path, button_canvas, apply_tint, tk_image):
+        if apply_tint:
+            # Open the original image using PIL
+            original_image = Image.open(image_path)
 
-    def reset_key_held_down(self, event=None):
-        self.key_held_down = None
+            # Enhance the color to add a green tint
+            enhancer = ImageEnhance.Color(original_image)
+            tinted_image = enhancer.enhance(10)  # Adjust the factor for the desired tint intensity
 
-    def move_left(self, event=None):
-        if event:  # Only set these variables if the event exists (i.e., the function was triggered by a key press)
-            self.last_keypress_time = time.time() * 1000
-            self.key_held_down = 'Left'
-        if not self.field.check_collision(self.current_tetromino, self.current_rotation, self.current_row,
-                                          self.current_col - 1):
-            self.current_col -= 1
-            self.update_grid()
+            # Convert the Pillow image to a Tkinter-compatible image
+            tk_tinted_image = ImageTk.PhotoImage(tinted_image)
 
-    def move_right(self, event=None):
-        if event:  # Only set these variables if the event exists (i.e., the function was triggered by a key press)
-            self.last_keypress_time = time.time() * 1000
-            self.key_held_down = 'Right'
-        if not self.field.check_collision(self.current_tetromino, self.current_rotation, self.current_row,
-                                          self.current_col + 1):
-            self.current_col += 1
-            self.update_grid()
+            # Update the button's image to the tinted version
+            self.canvas.itemconfig(button_canvas, image=tk_tinted_image)
 
-    def move_down(self, event=None):
-        if not self.field.check_collision(self.current_tetromino, self.current_rotation, self.current_row + 1,
-                                          self.current_col):
-            self.current_row += 1
-            self.update_grid()
+            # Keep a reference to the tinted image to prevent garbage collection
+            self.store_image(tk_tinted_image)
+        else:
+            # Revert to the original image if not hovering
+            # You need to keep a reference to the original tk_image as well
+            self.canvas.itemconfig(button_canvas, image=tk_image)
 
-    def hard_drop(self, event=None):
-        while not self.field.check_collision(self.current_tetromino, self.current_rotation, self.current_row + 1,
-                                             self.current_col):
-            self.current_row += 1
-        self.field.place_tetromino(self.current_tetromino, self.current_rotation, self.current_col)
-        self.current_tetromino = self.next_tetromino
-        self.current_row = 0
-        self.current_col = (self.field.cols // 2) - 2
-        self.current_rotation = 0
-        self.update_grid()
-        self.key_held_down = None
+    def store_image(self, tk_image):
+        # Store the Tkinter image reference to prevent garbage collection
+        if not hasattr(self, 'images'):
+            self.images = []
+        self.images.append(tk_image)
+
+    def click_window(self, event):
+        # Record the initial position of the mouse when clicking the window
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+
+    def drag_window(self, event):
+        # Calculate how much the mouse has moved
+        dx = event.x - self._drag_data["x"]
+        dy = event.y - self._drag_data["y"]
+
+        # Get the current position of the window
+        x = self.canvas.winfo_rootx() + dx
+        y = self.canvas.winfo_rooty() + dy
+
+        # Move the window to the new position
+        self.canvas.master.geometry(f"+{x}+{y}")
 
 if __name__ == '__main__':
     root = tk.Tk()
-    app = TetrisApp(root)
-    app.activate()
+    app = TetrisMenu(root)
     root.mainloop()
