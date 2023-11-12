@@ -20,6 +20,7 @@ class TetrisApp:
         self.active = True
         self.master = master
         self.bestMove = None
+        self.aiMode = False
 
         for widget in master.winfo_children():
             widget.destroy()
@@ -77,13 +78,22 @@ class TetrisApp:
 
         self.cell_size = 38.5  # pixels
         self.canvas_grid = [[None for _ in range(self.field.cols)] for _ in range(self.field.rows)]
-        self.next_tetrominoes = [self.random_tetromino() for _ in range(4)]
+        self.next_tetrominoes = [self.random_tetromino() for _ in range(5)]
         self.left_moved = False
 
         self.current_tetromino = self.random_tetromino()
         self.current_row = 0
         self.current_col = (self.field.cols // 2) - 2
         self.current_rotation = 0
+
+        self.score_label = tk.Label(self.master, text=f"{self.score}", font=('Helvetica', 20, 'bold'), bg='#FFFEE5')
+        self.score_label.place(x=200, y=265)
+        self.update_score()
+
+        self.high_score_label = tk.Label(self.master, text=f"{self.high_score}", font=('Helvetica', 20, 'bold'), bg='#FFFEE5')
+        self.high_score_label.place(x=400, y=265)
+
+        self.next_pieces_canvases = []
 
         self.last_keypress_time = 0  # Time of last directional key press
         self.key_held_down = None  # None, 'Left', or 'Right'
@@ -109,6 +119,7 @@ class TetrisApp:
         self.master.bind('<Right>', self.move_right)
 
         self.master.bind('p', self.toggle_playing)
+        self.master.bind('g', self.toggle_ai)
 
         self.master.bind('<KeyRelease-a>', self.reset_key_held_down)
         self.master.bind('<KeyRelease-Left>', self.reset_key_held_down)
@@ -119,6 +130,13 @@ class TetrisApp:
         self.master.focus_set()
 
         self.activate()
+
+    def toggle_ai(self, master):
+        self.aiMode = True
+
+    def update_score(self):
+        self.score_label.config(text=f"{self.score}")
+        self.master.after(1000, self.update_score)  # Update score every 1000 ms (1 second)
 
     def toggle_playing(self, master):
         if self.active:
@@ -228,21 +246,44 @@ class TetrisApp:
             self.canvas.itemconfig(button_canvas, image=tk_image)
 
     def draw_next_piece(self):
-        # Clear the old next pieces from the canvas
-        self.tetrisCanvas.delete("next_piece")
+        # Clear all previous piece canvases
+        for canvas in getattr(self, 'next_pieces_canvases', []):
+            canvas.destroy()
+
+        self.next_pieces_canvases = []  # Reset the list holding the canvases
+
+        base_y_offset = 292  # Initial Y offset
 
         for index, tetromino in enumerate(self.next_tetrominoes):
             shape = Tetromino(tetromino).value["shape"][0]
-            offset = Tetromino(tetromino).value["offset"]
+            color = Tetromino(tetromino).value["color"]
+            canvas_width = len(shape[0]) * (self.cell_size / 2)
+            canvas_height = len(shape) * (self.cell_size / 2)
+
+            # Calculate the position of the new canvas
+            canvas_x = 1125  # X position is constant
+            canvas_y = base_y_offset + (index * (3 * self.cell_size / 2))
+
+            # Create a new canvas for this tetromino
+            next_piece_canvas = tk.Canvas(self.master, width=canvas_width, height=canvas_height, bd=0,
+                                          highlightthickness=0, relief='flat', bg='white')
+            next_piece_canvas.place(x=canvas_x, y=canvas_y)
+
+            # Draw the tetromino in its canvas
             for dx, row in enumerate(shape):
                 for dy, cell in enumerate(row):
                     if cell:
-                        x1 = offset[0] + 510 + dy * self.cell_size / 2
-                        y1 = offset[1] + (40 + (index * 3 * self.cell_size / 2)) + dx * self.cell_size / 2
+                        x1 = dy * self.cell_size / 2
+                        y1 = dx * self.cell_size / 2
                         x2 = x1 + self.cell_size / 2
                         y2 = y1 + self.cell_size / 2
-                        self.tetrisCanvas.create_rectangle(x1, y1, x2, y2, fill=tetromino.value["color"],
-                                                           tags="next_piece")
+                        next_piece_canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline='')
+
+            # Add the canvas to the list
+            self.next_pieces_canvases.append(next_piece_canvas)
+
+            # Update the base Y offset for the next canvas
+            base_y_offset = base_y_offset + 23  # Increment for the next canvas
 
     def store_image(self, tk_image):
         # Store the Tkinter image reference to prevent garbage collection
@@ -278,47 +319,42 @@ class TetrisApp:
         return self.shuffled_bag.pop()
 
     def update_grid(self):
+        # Update the grid with the current state of the board
         for i in range(self.field.rows):
             for j in range(self.field.cols):
-                color = "white"
-                if self.field.board[i][j] != 0:
-                    tetromino_type = self.field.board[i][j]
-                    color = Tetromino(tetromino_type).value["color"]
-
+                tetromino_type = self.field.board[i][j]
+                color = "white" if tetromino_type == 0 else Tetromino(tetromino_type).value["color"]
                 self.tetrisCanvas.itemconfig(self.canvas_grid[i][j], fill=color)
 
-        shape = Tetromino(self.current_tetromino).value["shape"][self.current_rotation]
+        # Function to overlay a tetromino shape on the grid
+        def overlay_shape(shape, row, col, color):
+            for dx, shape_row in enumerate(shape):
+                for dy, is_filled in enumerate(shape_row):
+                    if is_filled:
+                        self.tetrisCanvas.itemconfig(
+                            self.canvas_grid[row + dx][col + dy], fill=color)
 
-        # Calculate the ghost (or shadow) tetromino
+        # Get the shape for the current rotation of the tetromino
+        current_shape = Tetromino(self.current_tetromino).value["shape"][self.current_rotation]
+
+        # If there is a best move, calculate and overlay the best move indicator
+        if self.bestMove:
+            best_row, best_col, best_rotation = 0, self.bestMove[1], self.bestMove[0]
+            while not self.field.check_collision(self.current_tetromino, best_rotation, best_row + 1, best_col):
+                best_row += 1
+            best_shape = Tetromino(self.current_tetromino).value["shape"][best_rotation]
+            overlay_shape(best_shape, best_row, best_col, "black")
+
+        # Calculate and overlay the ghost tetromino
         ghost_row = self.current_row
         while not self.field.check_collision(self.current_tetromino, self.current_rotation, ghost_row + 1,
                                              self.current_col):
             ghost_row += 1
+        overlay_shape(current_shape, ghost_row, self.current_col, "gray")
 
-        # Overlay the ghost tetromino
-        for dx, row in enumerate(shape):
-            for dy, cell in enumerate(row):
-                if cell:
-                    self.tetrisCanvas.itemconfig(self.canvas_grid[ghost_row + dx][self.current_col + dy], fill="gray")
-
-        if self.bestMove:
-            best_row = self.current_row
-            while not self.field.check_collision(self.current_tetromino, self.bestMove[0], best_row + 1,
-                                                 self.bestMove[1]):
-                best_row += 1
-
-            shape = Tetromino(self.current_tetromino).value["shape"][self.bestMove[0]]
-            for dx, row in enumerate(shape):
-                for dy, cell in enumerate(row):
-                    if cell:
-                        self.tetrisCanvas.itemconfig(self.canvas_grid[best_row + dx][self.bestMove[1] + dy],
-                                                     fill="black")
-
-        # Overlay the current tetromino
-        for dx, row in enumerate(shape):
-            for dy, cell in enumerate(row):
-                if cell:
-                    self.tetrisCanvas.itemconfig(self.canvas_grid[self.current_row + dx][self.current_col + dy], fill=self.current_tetromino.value["color"])
+        # Overlay the current tetromino in its actual position
+        overlay_shape(current_shape, self.current_row, self.current_col,
+                      Tetromino(self.current_tetromino).value["color"])
 
     def deactivate(self):
         self.active = False
@@ -357,6 +393,7 @@ class TetrisApp:
     def update_high_score(self, score):
         if score > self.high_score:
             self.high_score = score
+            self.high_score_label.config(text=f"{self.high_score}")
             self.save_options_to_file()
 
     def game_loop(self):
@@ -364,12 +401,18 @@ class TetrisApp:
             return
 
         current_time = time.time()
+        # fall_due = current_time - self.last_fall_time > 10 / 1000.0
         fall_due = current_time - self.last_fall_time > self.drop_time / 1000.0
         shift_due = current_time - self.last_shift_time > self.das_time / 1000.0
 
         if fall_due:
             if not self.field.check_collision(self.current_tetromino, self.current_rotation, self.current_row + 1, self.current_col):
                 self.current_row += 1
+
+                if self.aiMode:
+                    self.current_col = self.bestMove[1]
+                    self.current_rotation = self.bestMove[0]
+                    self.hard_drop()
             else:
                 self.field.place_tetromino(self.current_tetromino, self.current_rotation, self.current_col)
                 cachedTetromino = self.current_tetromino
@@ -384,6 +427,8 @@ class TetrisApp:
                 if self.current_row == 0:
                     self.clear_api_field()
                     self.field = Field()
+                    self.bestMove = None
+                    self.score = 0
                     self.update_high_score(self.score)
                 else:
                     self.make_api_move(cachedTetromino, self.current_rotation, self.current_col)
@@ -511,6 +556,8 @@ class TetrisApp:
         if self.current_row == 0:
             self.clear_api_field()
             self.field = Field()
+            self.bestMove = None
+            self.score = 0
             self.update_high_score(self.score)
         else:
             self.make_api_move(cachedTetromino, self.current_rotation, self.current_col)

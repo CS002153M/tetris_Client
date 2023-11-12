@@ -1,5 +1,5 @@
 {
-    "audio_enabled": null,
+    "audio_enabled": false,
     "das_time": 10,
     "arr_time": 100,
     "difficulty": 10,
